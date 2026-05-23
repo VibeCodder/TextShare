@@ -5,10 +5,12 @@ import http.server
 import socketserver
 import urllib.request
 import socket
-import time
 import platform
 import subprocess
 from datetime import datetime
+
+# Import nowej biblioteki do Drag & Drop
+from tkinterdnd2 import DND_FILES, TkinterDnD
 
 PORT = 8000
 
@@ -31,7 +33,6 @@ def get_all_local_ips():
     """Gathers all potential local IP addresses (especially useful for VMs)"""
     ips = []
     
-    # Method 1: Active socket (often catches the main outgoing interface)
     try:
         s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         s.connect(("8.8.8.8", 80))
@@ -40,7 +41,6 @@ def get_all_local_ips():
     except Exception:
         pass
 
-    # Method 2: Precise system command for Linux (perfect for VMs)
     if platform.system() == "Linux":
         try:
             output = subprocess.check_output(["hostname", "-I"]).decode("utf-8")
@@ -50,7 +50,6 @@ def get_all_local_ips():
         except Exception:
             pass
 
-    # Method 3: From network hostname (Fallback for Windows/Mac)
     try:
         hostname = socket.gethostname()
         _, _, host_ips = socket.gethostbyname_ex(hostname)
@@ -60,7 +59,6 @@ def get_all_local_ips():
     except Exception:
         pass
 
-    # If everything fails
     if not ips:
         ips = ["127.0.0.1"]
         
@@ -74,7 +72,6 @@ class ModernClipboardApp:
         self.root.geometry("950x600")
         self.root.configure(bg=COLORS["bg"])
 
-        # Style configuration for ttk.Combobox to match the dark theme
         style = ttk.Style()
         style.theme_use('clam')
         style.configure("TCombobox", fieldbackground=COLORS["text_bg"], 
@@ -87,13 +84,10 @@ class ModernClipboardApp:
         
         tk.Label(top_frame, text="Target Address:", bg=COLORS["panel"], fg=COLORS["text_fg"]).pack(side=tk.LEFT)
         
-        # Fetch address list and create dropdown
         addresses = get_all_local_ips()
         self.ip_entry = ttk.Combobox(top_frame, values=addresses, width=35, font=("Consolas", 10))
-        self.ip_entry.set(addresses[0]) # Set default
+        self.ip_entry.set(addresses[0])
         self.ip_entry.pack(side=tk.LEFT, padx=10)
-        
-        # Bind Enter key - update data when user types a new address and presses Enter
         self.ip_entry.bind("<Return>", self.fetch_data_from_address)
 
         tk.Label(top_frame, text="(Check dropdown if you are on a VM)", bg=COLORS["panel"], fg="gray").pack(side=tk.LEFT)
@@ -124,6 +118,10 @@ class ModernClipboardApp:
                                  insertbackground="white", relief=tk.FLAT, font=("Consolas", 11))
         self.text_area.pack(expand=True, fill=tk.BOTH, padx=10, pady=5)
         
+        # BINDINGS FOR DRAG AND DROP
+        self.text_area.drop_target_register(DND_FILES)
+        self.text_area.dnd_bind('<<Drop>>', self.handle_file_drop)
+
         # SHORTCUT BINDINGS
         self.text_area.bind("<Control-a>", self.select_all)
         self.text_area.bind("<Control-c>", self.copy_text)
@@ -139,8 +137,32 @@ class ModernClipboardApp:
         threading.Thread(target=self.start_server, daemon=True).start()
         self.log(f"App ready. Local server listening on {PORT}")
         self.log(f"Detected local IPs: {', '.join([a.replace(f'http://', '').replace(f':{PORT}', '') for a in addresses])}")
+        self.log("💡 Tip: You can drag and drop text files into the text area!")
 
     # --- METHODS ---
+    def handle_file_drop(self, event):
+        """Obsługuje upuszczenie pliku na okno aplikacji"""
+        # tk.splitlist bezpiecznie dzieli ścieżki, nawet jeśli mają spacje
+        files = self.root.tk.splitlist(event.data)
+        if not files:
+            return
+            
+        file_path = files[0] # Bierzemy pierwszy upuszczony plik
+        
+        try:
+            with open(file_path, 'r', encoding='utf-8') as file:
+                content = file.read()
+            self.text_area.delete("1.0", tk.END)
+            self.text_area.insert(tk.INSERT, content)
+            
+            # Skracamy ścieżkę do logów, żeby ładnie wyglądało
+            filename = file_path.split('/')[-1].split('\\')[-1]
+            self.log(f"Loaded content from file: {filename}")
+        except UnicodeDecodeError:
+            self.log("❌ Drag & Drop Error: Cannot read file. Please drop plain text files only.")
+        except Exception as e:
+            self.log(f"❌ Drag & Drop Error: {e}")
+
     def log(self, msg):
         self.log_area.config(state=tk.NORMAL)
         self.log_area.insert(tk.END, f"[{datetime.now().strftime('%H:%M:%S')}] {msg}\n")
@@ -241,6 +263,7 @@ class ModernClipboardApp:
             httpd.serve_forever()
 
 if __name__ == "__main__":
-    root = tk.Tk()
+    # ZMIANA: Używamy TkinterDnD.Tk() zamiast tk.Tk()
+    root = TkinterDnD.Tk()
     app = ModernClipboardApp(root)
     root.mainloop()
