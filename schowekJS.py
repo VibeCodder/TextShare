@@ -1,7 +1,8 @@
 import http.server
 import socketserver
 
-PORT = 8000
+START_PORT = 8000
+MAX_PORT = 8010
 shared_text = ""
 
 HTML_PAGE = """
@@ -192,11 +193,26 @@ class RequestHandler(http.server.BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(b"OK")
 
-with socketserver.TCPServer(("0.0.0.0", PORT), RequestHandler) as httpd:
-    print(f"✅ Server is running!")
-    print(f"👉 On this computer, open a browser and go to: http://localhost:{PORT}")
-    print(f"👉 To connect from another computer, use this computer's local IP address (e.g., http://localhost:{PORT})")
+# Klasa serwera z flagą pozwalającą na natychmiastowe ponowne użycie portu
+class ReusableTCPServer(socketserver.TCPServer):
+    allow_reuse_address = True
+
+# Pętla szukająca wolnego portu
+for port in range(START_PORT, MAX_PORT + 1):
     try:
-        httpd.serve_forever()
-    except KeyboardInterrupt:
-        print("\nStopping server...")
+        with ReusableTCPServer(("0.0.0.0", port), RequestHandler) as httpd:
+            print(f"✅ Server is running!")
+            print(f"👉 On this computer, open a browser and go to: http://localhost:{port}")
+            print(f"👉 To connect from another computer, use this computer's local IP address (e.g., http://localhost:{port})")
+            try:
+                httpd.serve_forever()
+            except KeyboardInterrupt:
+                print("\nStopping server...")
+            break # Zakończ pętlę, jeśli serwer wystartował bez błędów
+    except OSError as e:
+        if e.errno == 98: # Address already in use
+            print(f"⚠️ Port {port} is busy. Trying next port...")
+        else:
+            raise # Wyrzuć błąd, jeśli to coś innego niż zajęty port
+else:
+    print(f"❌ Could not find an open port between {START_PORT} and {MAX_PORT}.")
