@@ -181,6 +181,7 @@ class ModernClipboardApp:
     def paste_text(self, event=None):
         try:
             text = self.root.clipboard_get()
+            self.text_area.delete("1.0", tk.END)
             self.text_area.insert(tk.INSERT, text)
             self.log("Pasted text from clipboard.")
         except: pass
